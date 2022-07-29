@@ -8,6 +8,19 @@
 #include "proc.h"
 
 uint64
+sys_trace(void)
+{
+  int n;
+  // fetch the nth 32-bit system call argument
+  if(argint(0, &n) < 0)
+	return -1;
+  // remember the argument in the proc
+  myproc()->mask = n;
+  return 0;
+}
+
+
+uint64
 sys_exit(void)
 {
   int n;

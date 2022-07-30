@@ -1,6 +1,9 @@
 struct stat;
 struct rtcdate;
 
+//prototype of sysinfo()
+struct sysinfo;
+int sysinfo(struct sysinfo *);
 // system calls
 int trace(int);
 int fork(void);

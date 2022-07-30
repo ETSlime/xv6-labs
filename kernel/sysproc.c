@@ -6,6 +6,23 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
+
+uint64
+sys_info(void)
+{
+  struct sysinfo info;
+
+  info.nproc = numproc();
+  info.freemem = freemem();
+  uint64 addr; // user pointer to struct stat
+  
+  if(argaddr(0, &addr) < 0)
+    return -1;
+  if(copyout(myproc()->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+  return 0;
+}
 
 uint64
 sys_trace(void)

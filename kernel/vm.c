@@ -440,3 +440,39 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void printwalk(pagetable_t pagetable, int level)
+{
+    // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++)
+  {
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V))
+    {
+      // print level hierarchy
+      if (level == 0)
+          printf(".. .. ..");
+      else if(level == 1)
+          printf(".. ..");
+      else
+          printf("..");
+      // print pte
+      printf("%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      // if it is the lowest level page directory
+      // at least one of R/W/X will be set
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0)
+        printwalk((pagetable_t)child, level-1);
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable)
+{
+  // this is the addr of the highest level page directory
+  printf("page table %p\n", pagetable);
+  // start from the highest level
+  printwalk(pagetable, 2);
+  
+}

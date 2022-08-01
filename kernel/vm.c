@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -132,7 +134,13 @@ kvmpa(uint64 va)
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  // if use gloabl kernel pagetable other than processes',
+  // there is no entry in the global kernel pagetable and cause panic
+  // notice that in the procinit(), we didn't map va to the global pagetabel,
+  // instead we map va to each process's kernel pagetable in allocproc()
+  //pte = walk(kernel_pagetable, va, 0);
+  pte = walk(myproc()->kernel_table, va, 0);
+  
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -475,4 +483,47 @@ void vmprint(pagetable_t pagetable)
   // start from the highest level
   printwalk(pagetable, 2);
   
+}
+
+
+// mapping to kernel page table
+void
+uvmmap(uint64 va, uint64 pa, uint64 sz, int perm, pagetable_t proc_kernel_pagetable)
+{
+  if(mappages(proc_kernel_pagetable, va, sz, pa, perm) != 0)
+    panic("uvmmap");
+}
+
+/*
+ * kernel pagetable for processes
+ */
+pagetable_t
+proc_kvminit(void)
+{
+  pagetable_t proc_kernel_pagetable = (pagetable_t) kalloc();
+  memset(proc_kernel_pagetable, 0, PGSIZE);
+
+  // uart registers
+  uvmmap(UART0, UART0, PGSIZE, PTE_R | PTE_W, proc_kernel_pagetable);
+
+  // virtio mmio disk interface
+  uvmmap(VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W, proc_kernel_pagetable);
+
+  // CLINT
+  uvmmap(CLINT, CLINT, 0x10000, PTE_R | PTE_W, proc_kernel_pagetable);
+
+  // PLIC
+  uvmmap(PLIC, PLIC, 0x400000, PTE_R | PTE_W, proc_kernel_pagetable);
+
+  // map kernel text executable and read-only.
+  uvmmap(KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X, proc_kernel_pagetable);
+
+  // map kernel data and the physical RAM we'll make use of.
+  uvmmap((uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W, proc_kernel_pagetable);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  uvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X, proc_kernel_pagetable);
+
+  return proc_kernel_pagetable;
 }

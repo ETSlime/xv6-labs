@@ -34,14 +34,14 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));
+      // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va;
   }
-  kvminithart();
+  //kvminithart();
 }
 
 // Must be called with interrupts disabled,
@@ -107,6 +107,18 @@ allocproc(void)
 found:
   p->pid = allocpid();
 
+  // initialize kernel table for each process
+  p->kernel_table = proc_kvminit();
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
+
+  // if uncomment, will cause remap because same process will have the same va
+  // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  uvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W, p->kernel_table);
+  p->kstack = va;
+  
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
@@ -130,6 +142,28 @@ found:
   return p;
 }
 
+void proc_free_kernel_table(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+
+    // if there is an entry in the page table
+    if(pte & PTE_V)
+    {
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0) //if it's not leaf
+      {
+        proc_free_kernel_table((pagetable_t)child);
+      }
+      
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
+}
+
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
@@ -150,6 +184,10 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  // free the kernel pagetable
+  if(p->kernel_table)
+    proc_free_kernel_table(p->kernel_table);
+  p->kernel_table = 0;
 }
 
 // Create a user page table for a given process,
@@ -473,10 +511,20 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        // load the process's kernel page table into the core's satp register
+        // it must be called before swtch
+        w_satp(MAKE_SATP(p->kernel_table)); 
+        sfence_vma();
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+
+        // scheduler() should use kernel_pagetable when no process is running.
+        // switch back to the global kernel page
+        kvminithart();
         c->proc = 0;
 
         found = 1;

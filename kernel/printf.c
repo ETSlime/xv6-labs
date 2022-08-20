@@ -132,3 +132,16 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void
+backtrace(void)
+{
+  uint64 fp = r_fp(); // get the frame pointer of current stack frame
+  uint64 TOP = PGROUNDUP(fp); // stack frame from high to low
+  while (fp != TOP)
+  {
+    uint64 ra = *(uint64*)(fp - 8); // return address lives at -8 from fp
+    printf("%p\n", ra);
+    fp = *(uint64*)(fp - 16); // saved frame pointer lives at -16 from the fp
+  }
+}

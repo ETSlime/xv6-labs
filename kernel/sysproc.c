@@ -96,3 +96,32 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigalarm(void)
+{
+  int ticks0;
+  uint64 addr;
+  struct proc* p = myproc();
+  
+  if(argint(0,  &ticks0) < 0)
+    return -1;
+  if(argaddr(1,  &addr) < 0)
+    return -1;
+  p->interval = ticks0;
+  p->handler = (void(*)())addr;
+
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  // load saved trapframe
+  //printf("%p\n", p->trapframe->epc);
+  *p->trapframe = *p->trapframe_bak;
+  //printf("%p\n", p->trapframe->epc);
+  p->passedticks = 0;
+  return 0;
+}

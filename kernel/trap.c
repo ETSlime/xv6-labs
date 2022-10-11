@@ -67,11 +67,76 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if(r_scause() == 15 || r_scause() == 13)
+  {
+    int a = 1;
+    if (a == 0)
+    {
+    uint64 va = r_stval();
+    uint64 ka = (uint64)kalloc();
+    if (ka == 0) {
+      p->killed = 1;
+    }
+    else if(va >= p->sz || (va < PGROUNDDOWN(p->trapframe->sp))) {
+      kfree((void*)ka);
+      p->killed = 1;
+    }
+    else {
+      memset((void*)ka, 0, PGSIZE);
+      va = PGROUNDDOWN(va);
+      if (mappages(p->pagetable, va, PGSIZE, ka, PTE_U | PTE_R | PTE_W) != 0) {
+        kfree((void*)ka);
+        p->killed = 1;
+      }
+    }
+    }
+
+else
+{
+      uint64 va = r_stval();
+      //printf("%p\n", va);
+      // allocate one page fron memory
+      uint64 mem = (uint64)kalloc();
+      // if OOM, kill the process
+      if (mem == 0)
+      {
+        p->killed = 1;
+      }
+       
+      // if va higher than the top of heap(sz), kill the process
+      else if (va >= p->sz)
+      {
+        kfree((void*)mem);
+        p->killed = 1;
+      }
+        
+      // if va lower than the top of stack, kill the process
+      else if (va < p->trapframe->sp)
+      {
+        kfree((void*)mem);
+        p->killed = 1;
+      }
+        
+      else if (va < p->sz)
+      {
+        va = PGROUNDDOWN(va);
+        memset((void*)mem, 0, PGSIZE);
+        if(mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+        kfree((void*)mem);
+        p->killed = 1;}
+      }
+}
+
+  } 
+  else 
+  {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
+
+
 
   if(p->killed)
     exit(-1);
